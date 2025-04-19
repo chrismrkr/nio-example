@@ -1,0 +1,15 @@
+{
+  "port": 8000,
+  "threadPoolSize": 50,
+  "defaultHost": "localhost",
+  "documentRoot": "src/web/localhost",
+  "indexFileName": "index.html",
+  "allowExt": ["html", "jpg"],
+  "blockExt": ["exe"],
+  "error_403": "error403.html",
+  "error_404": "error404.html",
+  "error_500": "error500.html",
+  "virtualHosts": [
+
+  ]
+}
