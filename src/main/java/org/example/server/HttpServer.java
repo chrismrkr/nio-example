@@ -31,6 +31,8 @@ public class HttpServer {
     private static final Logger logger = LoggerFactory.getLogger(HttpServer.class);
     private static final java.util.logging.Logger consoleLogger = java.util.logging.Logger.getLogger(HttpServer.class.getCanonicalName());
     private static Map<SocketChannel, HttpRequestStreamHolder> streamHolder = new HashMap<>();
+    private static Map<SocketChannel, ByteBuffer> pendingWriteMap = new HashMap<>();
+    private static Map<SocketChannel, Long> TTL = new HashMap<>();
     public HttpServer() throws IOException {}
     public void start() throws IOException {
         ServerConfig serverConfig = ServerConfig.getInstance();
@@ -64,7 +66,7 @@ public class HttpServer {
                             streamHolder.put(client, new HttpRequestStreamHolder());
                         }
 
-                        if(byteReads == -1) {
+                        if(byteReads == -1) { // 연결 종료 FIN 수신
                             client.close();
                             streamHolder.remove(client);
                             continue;
@@ -91,20 +93,29 @@ public class HttpServer {
                             ByteBuffer responseBuffer = ByteBuffer.wrap(httpResponse.getBytes(StandardCharsets.UTF_8));
                             int write = client.write(responseBuffer);
                             if(responseBuffer.hasRemaining()) {
+                                pendingWriteMap.put(client, responseBuffer);
                                 selectionKey.interestOps(selectionKey.interestOps() | SelectionKey.OP_WRITE);
                             } else {
-                                client.close(); // 소켓 연결을 해제함
+                                if(httpRequest.getHeaders().containsKey("Connection") && httpRequest.getHeaders().get("Connection").equals("Keep-Alive")) {
+                                    // TODO. Keep-Alive 설정
+                                }
+                                else {
+                                    client.close();
+                                }
                             }
-
-                        } else {
-                            consoleLogger.info("READ CONTINUE... Waiting for another stream");
                         }
                     } else if(selectionKey.isWritable()) {
-                        consoleLogger.info("WRITE !! NOW !!");
-                    } else if(selectionKey.isConnectable()) {
-
+                        SocketChannel client = (SocketChannel) selectionKey.channel();
+                        ByteBuffer buffer = pendingWriteMap.get(client);
+                        if (buffer != null) {
+                            client.write(buffer);
+                            if (buffer.hasRemaining()) {
+                                pendingWriteMap.put(client, buffer);
+                            } else {
+                                selectionKey.interestOps(selectionKey.interestOps() & ~SelectionKey.OP_WRITE); // WRITE 감시 해제
+                            }
+                        }
                     }
-
                     currentSelectionEvents.remove();
                 }
             }
