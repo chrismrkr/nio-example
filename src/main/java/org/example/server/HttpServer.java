@@ -53,8 +53,17 @@ public class HttpServer {
                         client.configureBlocking(false);
                         client.register(selector, SelectionKey.OP_READ);
                         consoleLogger.info(client.toString() +": Client is Accepted.");
+                        continue;
+                    }
 
-                    } else if(selectionKey.isReadable()) {
+                    // TODO. AcceptorThread와 PollerThread를 분리한다.
+                    // 각 스레드 모두 독립적인 selector를 갖는다.
+                    // AcceptorThread는 연결을 accept하면 PollerThread의 selector를 wakeup한 후, channel을 등록한다.
+                    // PollerThread는 read, write 이벤트를 처리하고 응답한다.
+                    // 또한, PollerThread는 selector.select(1000)로 주기적으로 selector를 깨워서 Keep-Alive를 확인한다.
+
+
+                    if(selectionKey.isReadable()) {
                         SocketChannel client = (SocketChannel) selectionKey.channel();
                         ByteBuffer buffer = ByteBuffer.allocate(1024);
                         int byteReads = client.read(buffer);
@@ -107,7 +116,9 @@ public class HttpServer {
                         } else {
                             consoleLogger.info(client.toString()+ ": Client Should Read Input More");
                         }
-                    } else if(selectionKey.isWritable()) {
+                    }
+
+                    if(selectionKey.isWritable()) {
                         SocketChannel client = (SocketChannel) selectionKey.channel();
                         ByteBuffer buffer = ChannelContextHolder.retrievePendingOutput(client);
                         if (buffer != null) {
