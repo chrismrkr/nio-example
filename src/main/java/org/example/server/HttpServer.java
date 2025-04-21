@@ -30,9 +30,6 @@ import java.util.concurrent.Executors;
 public class HttpServer {
     private static final Logger logger = LoggerFactory.getLogger(HttpServer.class);
     private static final java.util.logging.Logger consoleLogger = java.util.logging.Logger.getLogger(HttpServer.class.getCanonicalName());
-    private static Map<SocketChannel, HttpRequestStreamHolder> streamHolder = new HashMap<>();
-    private static Map<SocketChannel, ByteBuffer> pendingWriteMap = new HashMap<>();
-    private static Map<SocketChannel, Long> TTL = new HashMap<>();
     public HttpServer() throws IOException {}
     public void start() throws IOException {
         ServerConfig serverConfig = ServerConfig.getInstance();
@@ -55,34 +52,33 @@ public class HttpServer {
                         SocketChannel client = serverSocketChannel.accept();
                         client.configureBlocking(false);
                         client.register(selector, SelectionKey.OP_READ);
-                        consoleLogger.info("ACCEPT END -> REGISTER READ EVNET");
+                        consoleLogger.info(client.toString() +": Client is Accepted.");
 
                     } else if(selectionKey.isReadable()) {
                         SocketChannel client = (SocketChannel) selectionKey.channel();
                         ByteBuffer buffer = ByteBuffer.allocate(1024);
                         int byteReads = client.read(buffer);
 
-                        if(!streamHolder.containsKey(client)) {
-                            streamHolder.put(client, new HttpRequestStreamHolder());
-                        }
-
-                        if(byteReads == -1) { // 연결 종료 FIN 수신
+                        if(byteReads == ChannelContextHolder.FIN_ACK) { // 연결 종료 FIN 수신
+                            consoleLogger.info(client.toString() + ": Client is Closed.");
+                            ChannelContextHolder.freeInputHolder(client);
                             client.close();
-                            streamHolder.remove(client);
                             continue;
                         } else if(byteReads == 0) {
                             continue;
                         }
+                        if(ChannelContextHolder.isNewChannel(client)) {
+                            ChannelContextHolder.allocateInputHolder(client);
+                        }
 
+                        ChannelContextHolder.getInputHolder(client).write(buffer);
+                        consoleLogger.info(client.toString()+ ": Client Reads Input");
+                        if(ChannelContextHolder.getInputHolder(client).isDone()) {
+                            consoleLogger.info(client.toString() + ": Client Read All Input");
+                            HttpRequest httpRequest = ChannelContextHolder.build(client);
 
-                        streamHolder.get(client).write(buffer);
-                        if(streamHolder.get(client).isDone()) {
-                            HttpRequest httpRequest = streamHolder.get(client).build();
-                            streamHolder.remove(client);
-
-                            consoleLogger.info("READ END -> DO WRITE OR REGISTER WRITE EVENT");
                             executeThreadPool.submit(() -> {
-                                System.out.println("DO SOMETHING!");
+                                consoleLogger.info(client.toString() + ": HELLO WORLD");
                             });
 
                             String httpResponse = "HTTP/1.1 200 OK\r\n" +
@@ -90,29 +86,39 @@ public class HttpServer {
                                     "Content-Length: 11\r\n" +
                                     "\r\n" +
                                     "Hello World";
+
+
                             ByteBuffer responseBuffer = ByteBuffer.wrap(httpResponse.getBytes(StandardCharsets.UTF_8));
-                            int write = client.write(responseBuffer);
+                            client.write(responseBuffer);
                             if(responseBuffer.hasRemaining()) {
-                                pendingWriteMap.put(client, responseBuffer);
+                                ChannelContextHolder.holdPendingOutput(client, buffer);
                                 selectionKey.interestOps(selectionKey.interestOps() | SelectionKey.OP_WRITE);
+                                consoleLogger.info(client.toString() + ": Client Should Write More");
                             } else {
+                                consoleLogger.info(client.toString() + ": Client Wrote All Output");
                                 if(httpRequest.getHeaders().containsKey("Connection") && httpRequest.getHeaders().get("Connection").equals("Keep-Alive")) {
                                     // TODO. Keep-Alive 설정
+                                    client.close();
                                 }
                                 else {
                                     client.close();
                                 }
                             }
+                        } else {
+                            consoleLogger.info(client.toString()+ ": Client Should Read Input More");
                         }
                     } else if(selectionKey.isWritable()) {
                         SocketChannel client = (SocketChannel) selectionKey.channel();
-                        ByteBuffer buffer = pendingWriteMap.get(client);
+                        ByteBuffer buffer = ChannelContextHolder.retrievePendingOutput(client);
                         if (buffer != null) {
                             client.write(buffer);
                             if (buffer.hasRemaining()) {
-                                pendingWriteMap.put(client, buffer);
+                                consoleLogger.info(client.toString() + ": Client Should Write More");
+                                ChannelContextHolder.holdPendingOutput(client, buffer);
                             } else {
+                                consoleLogger.info(client.toString() + ": Client Wrote All Output");
                                 selectionKey.interestOps(selectionKey.interestOps() & ~SelectionKey.OP_WRITE); // WRITE 감시 해제
+                                ChannelContextHolder.releasePendingOutput(client);
                             }
                         }
                     }
