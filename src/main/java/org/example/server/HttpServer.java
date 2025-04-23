@@ -37,7 +37,7 @@ public class HttpServer {
 
         try(ServerSocketChannel serverSocketChannel = ServerSocketChannel.open()
                 .bind(new InetSocketAddress("localhost", serverConfig.getPort()), 100);
-            Selector selector = Selector.open();) {
+            Selector selector = Selector.open()) {
 
             serverSocketChannel.configureBlocking(false);
             serverSocketChannel.register(selector, SelectionKey.OP_ACCEPT);
@@ -53,35 +53,28 @@ public class HttpServer {
                         client.configureBlocking(false);
                         client.register(selector, SelectionKey.OP_READ);
                         consoleLogger.info(client.toString() +": Client is Accepted.");
-                        continue;
                     }
-
-                    // TODO. AcceptorThread와 PollerThread를 분리한다.
-                    // 각 스레드 모두 독립적인 selector를 갖는다.
-                    // AcceptorThread는 연결을 accept하면 PollerThread의 selector를 wakeup한 후, channel을 등록한다.
-                    // PollerThread는 read, write 이벤트를 처리하고 응답한다.
-                    // 또한, PollerThread는 selector.select(1000)로 주기적으로 selector를 깨워서 Keep-Alive를 확인한다.
-
 
                     if(selectionKey.isReadable()) {
                         SocketChannel client = (SocketChannel) selectionKey.channel();
-                        ByteBuffer buffer = ByteBuffer.allocate(1024);
+                        ByteBuffer buffer = ByteBuffer.allocate(32);
                         int byteReads = client.read(buffer);
 
                         if(byteReads == ChannelContextHolder.FIN_ACK) { // 연결 종료 FIN 수신
                             consoleLogger.info(client.toString() + ": Client is Closed.");
                             ChannelContextHolder.freeInputHolder(client);
+                            NioIdleConnectionManager.close(client);
                             client.close();
                             continue;
                         } else if(byteReads == 0) {
                             continue;
                         }
+
                         if(ChannelContextHolder.isNewChannel(client)) {
                             ChannelContextHolder.allocateInputHolder(client);
                         }
 
                         ChannelContextHolder.getInputHolder(client).write(buffer);
-                        consoleLogger.info(client.toString()+ ": Client Reads Input");
                         if(ChannelContextHolder.getInputHolder(client).isDone()) {
                             consoleLogger.info(client.toString() + ": Client Read All Input");
                             HttpRequest httpRequest = ChannelContextHolder.build(client);
@@ -105,12 +98,13 @@ public class HttpServer {
                                 consoleLogger.info(client.toString() + ": Client Should Write More");
                             } else {
                                 consoleLogger.info(client.toString() + ": Client Wrote All Output");
-                                if(httpRequest.getHeaders().containsKey("Connection") && httpRequest.getHeaders().get("Connection").equals("Keep-Alive")) {
-                                    // TODO. Keep-Alive 설정
-                                    client.close();
+                                if(httpRequest.getHeaders().containsKey("Connection")
+                                        && httpRequest.getHeaders().get("Connection").equalsIgnoreCase("keep-alive")) {
+                                    NioIdleConnectionManager.setIdleConnection(client, System.currentTimeMillis());
                                 }
                                 else {
                                     client.close();
+                                    consoleLogger.info(client.toString() + ": Client Connection Closed");
                                 }
                             }
                         } else {
@@ -133,6 +127,7 @@ public class HttpServer {
                             }
                         }
                     }
+
                     currentSelectionEvents.remove();
                 }
             }
