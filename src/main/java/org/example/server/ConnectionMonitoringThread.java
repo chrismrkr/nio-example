@@ -1,23 +1,28 @@
 package org.example.server;
 
 import java.io.IOException;
-import java.nio.channels.ClosedChannelException;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
 import java.nio.channels.SocketChannel;
+import java.util.Iterator;
 import java.util.Set;
 
-public class PollerThread {
+public class ConnectionMonitoringThread {
     public static void start(Selector selector) throws IOException, InterruptedException {
         while(true) {
-            for(SelectionKey key : selector.keys()) {
-                SocketChannel connection = (SocketChannel) key.channel();
-                if(NioIdleConnectionManager.isUsed(connection)) {
+            Set<SelectionKey> keys = selector.keys();
+            for(SelectionKey key : keys) {
+                if(!(key.channel() instanceof SocketChannel)) {
                     continue;
                 }
-                if(NioIdleConnectionManager.isTimeout(connection)) {
+                SocketChannel connection = (SocketChannel) key.channel();
+                boolean isOpened = connection.isConnected();
+                if(ConnectionStatusManager.isOccupied(connection)) {
+                    continue;
+                }
+                if(ConnectionStatusManager.isTimeout(connection)) {
                     connection.close();
-                    selector.wakeup();
+                    key.cancel();
                 }
             }
             Thread.sleep(500);

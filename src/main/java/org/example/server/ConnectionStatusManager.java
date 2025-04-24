@@ -4,20 +4,30 @@ import java.nio.channels.SocketChannel;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
-public class NioIdleConnectionManager {
+public class ConnectionStatusManager {
     private static final Long CONNECTION_TIME_OUT_MS = 30000L;
     private static Map<SocketChannel, IdleConnectionDetails> keepAliveMap = new ConcurrentHashMap<>();
-    private static Map<SocketChannel, Long> isUsed = new ConcurrentHashMap<>();
-    private static final java.util.logging.Logger consoleLogger = java.util.logging.Logger.getLogger(NioIdleConnectionManager.class.getCanonicalName());
-    public static boolean isUsed(SocketChannel connection) {
-        if(!isUsed.containsKey(connection)) {
+    private static Map<SocketChannel, Long> isOccupied = new ConcurrentHashMap<>();
+    private static final java.util.logging.Logger consoleLogger = java.util.logging.Logger.getLogger(ConnectionStatusManager.class.getCanonicalName());
+    public static boolean isOccupied(SocketChannel connection) {
+        if(!isOccupied.containsKey(connection)) {
             return false;
         }
-        if(System.currentTimeMillis() - isUsed.get(connection) > CONNECTION_TIME_OUT_MS) {
-            isUsed.remove(connection);
+        if(System.currentTimeMillis() - isOccupied.get(connection) > CONNECTION_TIME_OUT_MS) {
+            isOccupied.remove(connection);
             return false;
         }
+        consoleLogger.info(connection.toString() + ": Already Occupied");
         return true;
+    }
+
+    public static void occupy(SocketChannel connection) {
+        consoleLogger.info(connection.toString() + ": get Occupied");
+        isOccupied.put(connection, System.currentTimeMillis());
+    }
+    public static void release(SocketChannel connection) {
+        consoleLogger.info(connection.toString() + ": get released");
+        isOccupied.remove(connection);
     }
     public static boolean isTimeout(SocketChannel connection) {
         if(!keepAliveMap.containsKey(connection)) {
