@@ -12,7 +12,9 @@ public class PollerThread {
         while(true) {
             for(SelectionKey key : selector.keys()) {
                 SocketChannel connection = (SocketChannel) key.channel();
-//                if(NioIdleConnectionManager.isUsed()) continue;
+                if(NioIdleConnectionManager.isUsed(connection)) {
+                    continue;
+                }
                 if(NioIdleConnectionManager.isTimeout(connection)) {
                     connection.close();
                     selector.wakeup();

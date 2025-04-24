@@ -5,10 +5,20 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class NioIdleConnectionManager {
-
+    private static final Long CONNECTION_TIME_OUT_MS = 30000L;
     private static Map<SocketChannel, IdleConnectionDetails> keepAliveMap = new ConcurrentHashMap<>();
-    private static Set<SocketChannel> isUsed = new Co
+    private static Map<SocketChannel, Long> isUsed = new ConcurrentHashMap<>();
     private static final java.util.logging.Logger consoleLogger = java.util.logging.Logger.getLogger(NioIdleConnectionManager.class.getCanonicalName());
+    public static boolean isUsed(SocketChannel connection) {
+        if(!isUsed.containsKey(connection)) {
+            return false;
+        }
+        if(System.currentTimeMillis() - isUsed.get(connection) > CONNECTION_TIME_OUT_MS) {
+            isUsed.remove(connection);
+            return false;
+        }
+        return true;
+    }
     public static boolean isTimeout(SocketChannel connection) {
         if(!keepAliveMap.containsKey(connection)) {
             throw new IllegalStateException("Socket Channel Not Connected");
