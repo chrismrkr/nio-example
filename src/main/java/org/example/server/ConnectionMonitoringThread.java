@@ -10,8 +10,12 @@ import java.util.Set;
 public class ConnectionMonitoringThread {
     public static void start(Selector selector) throws IOException, InterruptedException {
         while(true) {
+            boolean isSelectorOpen = selector.isOpen();
             Set<SelectionKey> keys = selector.keys();
             for(SelectionKey key : keys) {
+                boolean valid = key.isValid();
+
+                if(!key.isValid()) continue;
                 if(!(key.channel() instanceof SocketChannel)) {
                     continue;
                 }
@@ -22,7 +26,6 @@ public class ConnectionMonitoringThread {
                 }
                 if(ConnectionStatusManager.isTimeout(connection)) {
                     connection.close();
-                    key.cancel();
                 }
             }
             Thread.sleep(500);

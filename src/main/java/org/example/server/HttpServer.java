@@ -31,7 +31,7 @@ public class HttpServer {
         try(ServerSocketChannel serverSocketChannel = ServerSocketChannel.open()
                 .bind(new InetSocketAddress("localhost", serverConfig.getPort()), 100);
             Selector selector = Selector.open()) {
-            Thread backgroundThread = new Thread( () -> {
+            Thread backgroundThread = new Thread(() -> {
                 try {
                     ConnectionMonitoringThread.start(selector);
                 } catch (IOException e) {
@@ -145,8 +145,10 @@ public class HttpServer {
 
         } catch (IOException e) {
             logger.warn("Error accepting connection", e);
+            consoleLogger.info(e.getMessage());
         } catch (Exception e) {
             logger.error("Unknown Exception", e);
+            consoleLogger.info(e.getMessage());
         }
     }
 
