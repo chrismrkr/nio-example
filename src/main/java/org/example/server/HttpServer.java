@@ -8,7 +8,6 @@ import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
-import java.net.Socket;
 import java.nio.ByteBuffer;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
@@ -16,13 +15,14 @@ import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
 import java.nio.charset.StandardCharsets;
 import java.util.Iterator;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import java.util.Map;
+import java.util.concurrent.*;
 
 
 public class HttpServer {
     private static final Logger logger = LoggerFactory.getLogger(HttpServer.class);
     private static final java.util.logging.Logger consoleLogger = java.util.logging.Logger.getLogger(HttpServer.class.getCanonicalName());
+    public static final BlockingQueue<SocketChannel> timeoutConnectionQueue = new LinkedBlockingQueue<>();
     public HttpServer() throws IOException {}
     public void start() throws IOException {
         ServerConfig serverConfig = ServerConfig.getInstance();
@@ -30,23 +30,18 @@ public class HttpServer {
 
         try(ServerSocketChannel serverSocketChannel = ServerSocketChannel.open()
                 .bind(new InetSocketAddress("localhost", serverConfig.getPort()), 100);
+
             Selector selector = Selector.open()) {
-            Thread backgroundThread = new Thread(() -> {
-                try {
-                    ConnectionMonitoringThread.start(selector);
-                } catch (IOException e) {
-                    throw new RuntimeException(e);
-                } catch (InterruptedException e) {
-                    throw new RuntimeException(e);
-                }
-            });
-            backgroundThread.start();
-
-
             serverSocketChannel.configureBlocking(false);
             serverSocketChannel.register(selector, SelectionKey.OP_ACCEPT);
 
-            while(selector.select() > 0) {
+            while(true) {
+                int select = selector.select(1000);
+                if(select == 0) {
+                    clearTimeoutConnection();
+                    continue;
+                }
+
                 Iterator<SelectionKey> currentSelectionEvents = selector.selectedKeys().iterator();
 
                 while(currentSelectionEvents.hasNext()) {
@@ -59,8 +54,6 @@ public class HttpServer {
 
 
                     SocketChannel client = (SocketChannel) selectionKey.channel();
-                    if(ConnectionStatusManager.isOccupied(client)) continue;
-                    ConnectionStatusManager.occupy(client);
                     if(selectionKey.isReadable()) {
                         ByteBuffer buffer = ByteBuffer.allocate(32);
                         int byteReads = client.read(buffer);
@@ -104,15 +97,6 @@ public class HttpServer {
                                 consoleLogger.info(client.toString() + ": Client Should Write More");
                             } else {
                                 consoleLogger.info(client.toString() + ": Client Wrote All Output");
-//                                if(httpRequest.getHeaders().containsKey("Connection")
-//                                        && httpRequest.getHeaders().get("Connection").equalsIgnoreCase("keep-alive")) {
-//                                    ConnectionStatusManager.setIdleConnection(client, System.currentTimeMillis());
-//                                }
-//                                else {
-//                                    client.close();
-//                                    consoleLogger.info(client.toString() + ": Client Connection Closed");
-//                                }
-//                                client.close();
                                 ConnectionStatusManager.setIdleConnection(client, System.currentTimeMillis());
                             }
                         } else {
@@ -133,14 +117,13 @@ public class HttpServer {
                                 ChannelContextHolder.releasePendingOutput(client);
 
                                 ConnectionStatusManager.setIdleConnection(client, System.currentTimeMillis());
-//                                client.close();
                             }
                         }
                     }
-
-                    ConnectionStatusManager.release(client);
                     currentSelectionEvents.remove();
                 }
+
+                clearTimeoutConnection();
             }
 
         } catch (IOException e) {
@@ -149,6 +132,17 @@ public class HttpServer {
         } catch (Exception e) {
             logger.error("Unknown Exception", e);
             consoleLogger.info(e.getMessage());
+        }
+    }
+
+    private void clearTimeoutConnection() throws IOException {
+        Map<SocketChannel, ConnectionStatusManager.IdleConnectionDetails> keepAliveMap = ConnectionStatusManager.getKeepAliveMap();
+        for(SocketChannel connection : keepAliveMap.keySet()) {
+            if(ConnectionStatusManager.isTimeout(connection)) {
+                ConnectionStatusManager.close(connection);
+                connection.close();
+                consoleLogger.info(connection.toString() + " : Connection is Closed");
+            }
         }
     }
 
