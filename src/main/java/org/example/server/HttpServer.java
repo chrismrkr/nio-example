@@ -115,7 +115,6 @@ public class HttpServer {
                                 consoleLogger.info(client.toString() + ": Client Wrote All Output");
                                 selectionKey.interestOps(selectionKey.interestOps() & ~SelectionKey.OP_WRITE); // WRITE 감시 해제
                                 ChannelContextHolder.releasePendingOutput(client);
-
                                 ConnectionStatusManager.setIdleConnection(client, System.currentTimeMillis());
                             }
                         }
