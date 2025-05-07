@@ -34,6 +34,8 @@ public class HttpServer {
             serverSocketChannel.configureBlocking(false);
             serverSocketChannel.register(selector, SelectionKey.OP_ACCEPT);
 
+            consoleLogger.info("NIO HTTP SERVER STARTED");
+
             while(true) {
                 int select = selector.select(100);
                 if(select == 0) {
