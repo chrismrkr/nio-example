@@ -22,7 +22,7 @@ public class HttpRequestStreamHolder {
     }
 
     public void write(ByteBuffer byteBuffer) throws IOException {
-        if(this.isDone()) return;
+        if(this.isReadDone()) return;
 
         this.stream.write(byteBuffer.array());
         byte[] byteStream = this.stream.toByteArray();
@@ -70,12 +70,12 @@ public class HttpRequestStreamHolder {
         return -1;
     }
 
-    public boolean isDone() {
+    public boolean isReadDone() {
         return this.isDone;
     }
 
     public HttpRequest build() {
-        if(!this.isDone()) {
+        if(!this.isReadDone()) {
             throw new IllegalStateException("Http Request Not Built Completely");
         }
         return this.httpRequest;

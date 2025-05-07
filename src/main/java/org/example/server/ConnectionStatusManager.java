@@ -29,11 +29,11 @@ public class ConnectionStatusManager {
         consoleLogger.info(connection.toString() + ": Close Socket Channel Connection");
         keepAliveMap.remove(connection);
     }
-    public static void setIdleConnection(SocketChannel connection, long lastAccessTime, Long timeOut) {
+    public static void keepIdleConnectionAlive(SocketChannel connection, long lastAccessTime, Long timeOut) {
         consoleLogger.info(connection.toString() + ": Keep Socket Channel Alive");
         keepAliveMap.put(connection, new IdleConnectionDetails(lastAccessTime, timeOut));
     }
-    public static void setIdleConnection(SocketChannel connection, long lastAccessTime) {
+    public static void keepIdleConnectionAlive(SocketChannel connection, long lastAccessTime) {
         consoleLogger.info(connection.toString() + ": Keep Socket Channel Alive");
         keepAliveMap.put(connection, new IdleConnectionDetails(lastAccessTime, 3000L));
     }
